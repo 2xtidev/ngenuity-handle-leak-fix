@@ -1,0 +1,76 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile with the csc.exe that ships with Windows
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $csc /nologo /target:winexe /platform:x64 /optimize+ /out:dist\NGenuityLeakFix.exe src\NGenuityLeakFix.cs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Check the script variant compiles under Windows PowerShell 5.1
+        shell: powershell
+        run: Add-Type -Path src\NGenuityLeakFix.cs
+
+      - name: Smoke test (no NGENUITY on the runner, must exit cleanly)
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\NGenuityLeakFix.exe -ArgumentList '--once','--dry-run','--log',"$PWD\dist\smoke.log" -Wait -PassThru
+          Get-Content dist\smoke.log
+          if ($p.ExitCode) { exit $p.ExitCode }
+          Remove-Item dist\smoke.log
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force pkg\src | Out-Null
+          Copy-Item dist\NGenuityLeakFix.exe, run.ps1, install.ps1, uninstall.ps1, README.md, LICENSE pkg\
+          Copy-Item src\NGenuityLeakFix.cs pkg\src\
+          $hash = (Get-FileHash dist\NGenuityLeakFix.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  NGenuityLeakFix.exe" | Set-Content pkg\SHA256SUMS.txt
+          Compress-Archive pkg\* dist\NGenuityLeakFix.zip
+          "$hash  NGenuityLeakFix.exe" | Set-Content dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
+
+      - name: Attest that the exe was built from this commit
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/NGenuityLeakFix.exe
+            dist/NGenuityLeakFix.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NGenuityLeakFix
+          path: |
+            dist/NGenuityLeakFix.exe
+            dist/NGenuityLeakFix.zip
+            dist/SHA256SUMS.txt
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sum = Get-Content dist\SHA256SUMS.txt
+          $notes = "Built by GitHub Actions from commit $env:GITHUB_SHA.`n`nSHA-256: ``$sum```n`nVerify: ``gh attestation verify NGenuityLeakFix.exe --repo $env:GITHUB_REPOSITORY``"
+          gh release create $env:GITHUB_REF_NAME dist\NGenuityLeakFix.zip dist\NGenuityLeakFix.exe dist\SHA256SUMS.txt --title $env:GITHUB_REF_NAME --notes $notes
