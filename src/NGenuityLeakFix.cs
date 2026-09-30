@@ -96,6 +96,7 @@ namespace NGenuityLeakFix
         readonly int processTypeIndex;
         readonly Dictionary<long, Entry> entries = new Dictionary<long, Entry>();
         int trackedPid;
+        DateTime trackedStart;
         bool firstPass;
         IntPtr helper = IntPtr.Zero;
         IntPtr buffer = IntPtr.Zero;
@@ -117,7 +118,11 @@ namespace NGenuityLeakFix
                 r.Note = HelperExe + " is not running";
                 return r;
             }
-            if (pid != trackedPid)
+            // A restarted helper can get its old pid back, so compare the
+            // start time too: handle values from the previous instance mean
+            // nothing in the new one.
+            DateTime started = HelperStartUtc(pid, DateTime.MinValue);
+            if (pid != trackedPid || started != trackedStart)
             {
                 Reset();
                 helper = Native.OpenProcess(Native.PROCESS_DUP_HANDLE | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -127,6 +132,7 @@ namespace NGenuityLeakFix
                     return r;
                 }
                 trackedPid = pid;
+                trackedStart = started;
                 firstPass = true;
             }
             r.HelperPid = pid;
@@ -141,7 +147,7 @@ namespace NGenuityLeakFix
             // Handles found on the first pass after attaching have been open
             // for an unknown time, at most since the helper started.
             DateTime now = DateTime.UtcNow;
-            DateTime seen = firstPass ? HelperStartUtc(pid, now) : now;
+            DateTime seen = firstPass && started != DateTime.MinValue ? started : now;
             firstPass = false;
             foreach (var h in current)
             {
@@ -307,6 +313,7 @@ namespace NGenuityLeakFix
         {
             entries.Clear();
             trackedPid = 0;
+            trackedStart = DateTime.MinValue;
             if (helper != IntPtr.Zero) { Native.CloseHandle(helper); helper = IntPtr.Zero; }
         }
     }
@@ -333,9 +340,14 @@ namespace NGenuityLeakFix
             bool created;
             using (var mutex = new Mutex(true, @"Local\NGenuityLeakFix", out created))
             {
-                if (!created && !opt.Once) { Log(opt, "Another instance is already running, exiting."); return 0; }
+                // Two instances closing handles in the same helper could race
+                // on a reused handle value, so only a dry run may run alongside
+                // an installed instance.
+                if (!created && !(opt.Once && opt.DryRun)) { Log(opt, "Another instance is already running, exiting."); return 0; }
 
-                var fixer = new Fixer(opt);
+                Fixer fixer;
+                try { fixer = new Fixer(opt); }
+                catch (Exception ex) { Log(opt, "Cannot start: " + ex.Message); return 1; }
                 Log(opt, "Started (interval " + opt.IntervalSeconds + "s, min-age " + opt.MinAgeSeconds +
                          "s, threshold " + opt.Threshold + (opt.DryRun ? ", DRY RUN" : "") + ").");
 

@@ -88,8 +88,8 @@ really uses a handle, it still has one. The tool does nothing while the helper
 holds fewer than 500 process handles, so it goes quiet by itself if HyperX
 fixes the bug.
 
-It never touches another process, never touches other handle types, and makes
-no network connections. It writes one log file:
+It never modifies another process (it only reads the process list to find the
+helper), never touches other handle types, and makes no network connections. It writes one log file:
 `%LOCALAPPDATA%\NGenuityLeakFix\NGenuityLeakFix.log`.
 
 The first pass on our machine:
