@@ -194,10 +194,6 @@ NGenuityLeakFix.exe [--interval 5] [--min-age 30] [--threshold 500]
 - Remove NGENUITY from startup (Task Manager → Startup apps) and open it only
   when you change settings. Most HyperX devices keep their settings onboard.
 - Restart `NGenuity2Helper.exe` periodically, for example from Task Scheduler.
-- [withmorten/NGenuity2Helper_leakfix](https://github.com/withmorten/NGenuity2Helper_leakfix)
-  takes the same approach more aggressively: it closes every process handle
-  still present one second later. It confirmed the approach works; this
-  repository is an independent implementation.
 
 ## Reporting to HyperX
 
