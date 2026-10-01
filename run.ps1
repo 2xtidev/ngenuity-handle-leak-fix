@@ -11,6 +11,10 @@
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\run.ps1 -Detailed
     Runs in the foreground and prints every pass.
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\run.ps1 -Tray
+    Runs with the tray icon and status window instead of console output.
 #>
 param(
     [int]$Interval = 5,
@@ -19,6 +23,7 @@ param(
     [switch]$DryRun,
     [switch]$Once,
     [switch]$Detailed,
+    [switch]$Tray,
     [string]$Log
 )
 
@@ -31,10 +36,11 @@ if (-not [Environment]::Is64BitProcess) {
 $source = Join-Path $PSScriptRoot 'src\NGenuityLeakFix.cs'
 if (-not (Test-Path $source)) { $source = Join-Path $PSScriptRoot 'NGenuityLeakFix.cs' }
 if (-not ('NGenuityLeakFix.Program' -as [type])) {
-    Add-Type -Path $source
+    Add-Type -Path $source -ReferencedAssemblies System.Windows.Forms, System.Drawing
 }
 
-$argList = @('--interval', $Interval, '--min-age', $MinAge, '--threshold', $Threshold, '--console')
+$argList = @('--interval', $Interval, '--min-age', $MinAge, '--threshold', $Threshold)
+if (-not $Tray) { $argList += '--console' }
 if ($DryRun)   { $argList += '--dry-run' }
 if ($Once)     { $argList += '--once' }
 if ($Detailed) { $argList += '--verbose' }

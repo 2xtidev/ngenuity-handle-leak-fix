@@ -58,7 +58,7 @@ else {
     Copy-Item (Join-Path $here 'run.ps1') $target -Force
     Copy-Item $cs $target -Force
     $lnk.TargetPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $lnk.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + (Join-Path $target 'run.ps1') + '"'
+    $lnk.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + (Join-Path $target 'run.ps1') + '" -Tray'
     $lnk.WindowStyle = 7
 }
 $lnk.Save()
@@ -72,4 +72,5 @@ else {
 
 Write-Host "Installed ($Mode mode) to $target"
 Write-Host "Starts at logon via $shortcut"
+Write-Host "Look for the round NGenuityLeakFix icon in the notification area; double-click it for the status window."
 Write-Host "Log: $target\NGenuityLeakFix.log"

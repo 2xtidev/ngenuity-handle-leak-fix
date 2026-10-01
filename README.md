@@ -5,8 +5,11 @@ process `NGenuity2Helper.exe` opens a handle to every running process every few
 seconds and never closes them. Left running for a day or two, the PC ends up at
 99% memory and 100% disk.
 
-This tool closes the leaked handles and nothing else. It needs no administrator
-rights, and ships as readable source plus an executable built by GitHub Actions.
+This tool closes the leaked handles and shows what is happening in a tray icon
+and a small status window. It needs no administrator rights, and ships as
+readable source plus an executable built by GitHub Actions.
+
+![The status window](docs/status-window.png)
 
 > Not affiliated with HyperX or HP. Use at your own risk; see [Risks](#risks).
 
@@ -123,6 +126,30 @@ It took under 5 seconds. The helper and the NGENUITY app kept running, and the
 helper then stayed at ~4,400 handles. Later, 957,000 handles accumulated over a
 10-hour run were closed in about three seconds.
 
+## The tray icon and status window
+
+The tool sits in the notification area as a round icon:
+
+| Icon | Meaning |
+|---|---|
+| Green | The leak is under control, or the helper is not leaking |
+| Gray | NGENUITY's helper is not running; nothing to do |
+| Amber | Paused or dry run: handles are counted but not closed |
+| Red | The helper has used a full CPU core for five minutes, or the tool cannot read its handles |
+
+Hover for the current numbers, double-click for the status window, right-click
+for the menu (pause, end the helper, open the log, exit). The window shows:
+
+- **Handles held by the helper** right now. A few thousand is the steady state.
+- **Closed in the last minute**, which is the leak rate, and the total since
+  the tool started.
+- **Exited processes kept alive** by the helper's handles.
+- **Helper CPU**, as a share of one core.
+- A chart of the last hour and the tail of the log.
+
+Closing the window leaves the tool running in the tray. To run without any
+interface, as earlier versions did, start it with `--no-ui`.
+
 ## A second bug: CPU spin after sleep
 
 Seen once, on Windows 11 26H2 with NGENUITY 5.38.0.0. After the PC woke from a
@@ -134,14 +161,19 @@ handles. While it was spinning it opened no new handles, and closing its
 leaked handles did not stop the spin, so this is a separate problem. We do not
 know what triggers it or what ended it.
 
-**This tool does not fix it.** To check:
+**This tool does not fix it, but it tells you.** When the helper has used a
+full core for five minutes the tray icon turns red, a notification appears and
+the log records it. *End helper process* in the window or the tray menu stops
+the helper; NGENUITY starts a new one the next time the app is opened. The tool
+never ends the helper on its own.
+
+To check by hand:
 
 ```powershell
 $p = Get-Process NGenuity2Helper; $a = $p.CPU; Start-Sleep 10; $p.Refresh(); $p.CPU - $a
 ```
 
-A result close to 10 means the helper is burning a full core. End
-`NGenuity2Helper.exe` in Task Manager, or restart NGENUITY.
+A result close to 10 means the helper is burning a full core.
 
 ## Install
 
@@ -156,7 +188,8 @@ No administrator rights are needed: the helper runs as your user.
    ```
 
 This copies the files to `%LOCALAPPDATA%\NGenuityLeakFix`, adds a shortcut to
-your Startup folder and starts the tool.
+your Startup folder and starts the tool. Its icon appears in the notification
+area (Windows may tuck it under the `^` overflow arrow).
 
 ### Script mode (no binary)
 
@@ -166,8 +199,9 @@ If you would rather not run an `.exe` at all:
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -Mode script
 ```
 
-This runs `run.ps1`, which compiles `src\NGenuityLeakFix.cs` in memory with
-`Add-Type` at every start. What you read is exactly what runs.
+This runs `run.ps1 -Tray`, which compiles `src\NGenuityLeakFix.cs` in memory
+with `Add-Type` at every start. What you read is exactly what runs, tray icon
+included.
 
 ### Try it first
 
@@ -204,6 +238,7 @@ To build it yourself, no SDK is needed:
 
 ```
 NGenuityLeakFix.exe [--interval 5] [--min-age 30] [--threshold 500]
+                    [--spin-cpu 90] [--spin-minutes 5] [--no-ui]
                     [--dry-run] [--once] [--console] [--verbose] [--log path]
 ```
 
@@ -212,9 +247,12 @@ NGenuityLeakFix.exe [--interval 5] [--min-age 30] [--threshold 500]
 | `--interval` | 5 | Seconds between passes |
 | `--min-age` | 30 | A handle must be at least this many seconds old before it can be closed |
 | `--threshold` | 500 | Do nothing while the helper holds fewer process handles than this |
+| `--spin-cpu` | 90 | Helper CPU, as a percentage of one core, that counts as spinning |
+| `--spin-minutes` | 5 | Minutes at that level before the alert is raised |
+| `--no-ui` | | No tray icon or window; log only |
 | `--dry-run` | | Report what would be closed, close nothing |
-| `--once` | | One pass, then exit |
-| `--console` | | Print to a console as well as the log |
+| `--once` | | One pass, then exit; implies `--no-ui` |
+| `--console` | | Print to a console as well as the log; implies `--no-ui` |
 | `--verbose` | | Log every pass instead of a summary every 10 minutes |
 
 ## Risks

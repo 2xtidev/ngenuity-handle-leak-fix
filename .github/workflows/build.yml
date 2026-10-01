@@ -27,7 +27,7 @@ jobs:
 
       - name: Check the script variant compiles under Windows PowerShell 5.1
         shell: powershell
-        run: Add-Type -Path src\NGenuityLeakFix.cs
+        run: Add-Type -Path src\NGenuityLeakFix.cs -ReferencedAssemblies System.Windows.Forms, System.Drawing
 
       - name: Smoke test (no NGENUITY on the runner, must exit cleanly)
         shell: pwsh
@@ -43,6 +43,7 @@ jobs:
           New-Item -ItemType Directory -Force pkg\src | Out-Null
           Copy-Item dist\NGenuityLeakFix.exe, run.ps1, install.ps1, uninstall.ps1, README.md, LICENSE pkg\
           Copy-Item src\NGenuityLeakFix.cs pkg\src\
+          Copy-Item docs pkg\docs -Recurse
           $hash = (Get-FileHash dist\NGenuityLeakFix.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  NGenuityLeakFix.exe" | Set-Content pkg\SHA256SUMS.txt
           Compress-Archive pkg\* dist\NGenuityLeakFix.zip
