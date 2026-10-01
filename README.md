@@ -64,7 +64,7 @@ So the helper enumerates the running processes (probably to detect games),
 opens each one, and never calls `CloseHandle`.
 
 **The rate follows the number of running processes.** After a clean boot on
-Windows 11 26H2 (build 26300) with ~265 processes it was ~36 handles/s; with a
+Windows 11 26H2 (build 26300) with ~265 processes it was ~40 handles/s; with a
 game and its launcher open, ~50/s; with ~470 processes, ~100/s. In a 10-hour
 run without the fix the helper reached 957,000 handles.
 
