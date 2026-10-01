@@ -17,6 +17,8 @@ rights, and ships as readable source plus an executable built by GitHub Actions.
   "Thread failed to start" or out-of-memory errors.
 - `pagefile.sys` grows to tens of GB and eats space on `C:`.
 - Rebooting fixes it for a day or two.
+- Separately: after the PC wakes from sleep, `NGenuity2Helper.exe` may sit at
+  100% of one CPU core. See [A second bug](#a-second-bug-cpu-spin-after-sleep).
 
 ## Check whether you have it
 
@@ -61,12 +63,30 @@ immediately and brought the disk queue back to 0.1.
 So the helper enumerates the running processes (probably to detect games),
 opens each one, and never calls `CloseHandle`.
 
-**Why memory is hit so hard.** A handle to a process that has exited keeps that
-process object alive as a "zombie" until the handle is closed. The cost is not
-linear in the handle count: at 1.47 million handles (4.5 hours) closing them
-freed about 1.2 GB, while at 6.4 million (36 hours) killing the helper freed
-over 80 GB of commit. Our reading is that the cost is dominated by exited
-processes, which accumulate with uptime; we have not proven this.
+**The rate follows the number of running processes.** After a clean boot on
+Windows 11 26H2 (build 26300) with ~265 processes it was ~36 handles/s; with a
+game and its launcher open, ~50/s; with ~470 processes, ~100/s. In a 10-hour
+run without the fix the helper reached 957,000 handles.
+
+**Where the memory goes is not fully explained.** What we know:
+
+- When the machine ran out of commit, Windows logged event 2004
+  (Resource-Exhaustion-Detector) naming the largest consumers, and the largest
+  was a process using 0.9 GB. No process owned the memory; it was released the
+  moment the helper was killed.
+- A handle to a process that has exited keeps that process object alive as a
+  "zombie". After 10 hours the helper was keeping ~400 exited processes alive.
+- The cost per handle is small: ~0.5 KB of kernel memory each in our runs.
+  Zombies do not keep the private memory of the process: 40 processes of 100 MB
+  each, captured by the helper and then exited, left nothing measurable behind.
+- After a 9 GB game exited while the helper held handles to it, about 0.5 GB of
+  system commit did not come back.
+- In runs of 1 hour and 10 hours, total commit stayed essentially flat. The
+  80 GB seen after 36 hours did not reproduce at that scale.
+
+So the cost is not linear in the handle count, and we have not found the
+mechanism. Our best guess is that it comes from large, long-lived processes
+exiting while the helper holds them, over a day or more of normal use.
 
 ## How the fix works
 
@@ -89,8 +109,8 @@ holds fewer than 500 process handles, so it goes quiet by itself if HyperX
 fixes the bug.
 
 It never modifies another process (it only reads the process list to find the
-helper), never touches other handle types, and makes no network connections. It writes one log file:
-`%LOCALAPPDATA%\NGenuityLeakFix\NGenuityLeakFix.log`.
+helper), never touches other handle types, and makes no network connections.
+It writes one log file: `%LOCALAPPDATA%\NGenuityLeakFix\NGenuityLeakFix.log`.
 
 The first pass on our machine:
 
@@ -100,7 +120,28 @@ closed 1473745 (1384922 duplicate, 88823 to exited processes)
 ```
 
 It took under 5 seconds. The helper and the NGENUITY app kept running, and the
-helper then stayed at ~4,400 handles.
+helper then stayed at ~4,400 handles. Later, 957,000 handles accumulated over a
+10-hour run were closed in about three seconds.
+
+## A second bug: CPU spin after sleep
+
+Seen once, on Windows 11 26H2 with NGENUITY 5.38.0.0. After the PC woke from a
+four-hour sleep at night, with nobody at the keyboard, the main NGENUITY app
+was no longer running (no crash was logged) and `NGenuity2Helper.exe` was left
+behind using **100% of one CPU core**. It stayed that way for about six hours,
+then went back to normal on its own in the morning and resumed leaking
+handles. While it was spinning it opened no new handles, and closing its
+leaked handles did not stop the spin, so this is a separate problem. We do not
+know what triggers it or what ended it.
+
+**This tool does not fix it.** To check:
+
+```powershell
+$p = Get-Process NGenuity2Helper; $a = $p.CPU; Start-Sleep 10; $p.Refresh(); $p.CPU - $a
+```
+
+A result close to 10 means the helper is burning a full core. End
+`NGenuity2Helper.exe` in Task Manager, or restart NGENUITY.
 
 ## Install
 
@@ -186,8 +227,8 @@ NGenuityLeakFix.exe [--interval 5] [--min-age 30] [--threshold 500]
   same value back between two passes, the tool would treat the new handle as
   old. The 30-second minimum age and the "newest handle per process is kept"
   rule make this harmless in practice.
-- Tested on one machine (Windows 11 25H2, NGENUITY 5.38.0.0). 64-bit Windows
-  only.
+- Tested on one machine (Windows 11 25H2 and 26H2, NGENUITY 5.38.0.0). 64-bit
+  Windows only.
 
 ## Alternatives
 
