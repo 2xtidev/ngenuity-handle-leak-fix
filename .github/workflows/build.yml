@@ -45,9 +45,11 @@ jobs:
           Copy-Item src\NGenuityLeakFix.cs pkg\src\
           Copy-Item docs pkg\docs -Recurse
           $hash = (Get-FileHash dist\NGenuityLeakFix.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  NGenuityLeakFix.exe" | Set-Content pkg\SHA256SUMS.txt
+          # LF and no BOM, so `sha256sum -c` accepts the file.
+          $sums = "$hash  NGenuityLeakFix.exe`n"
+          [IO.File]::WriteAllText("$PWD\pkg\SHA256SUMS.txt", $sums)
           Compress-Archive pkg\* dist\NGenuityLeakFix.zip
-          "$hash  NGenuityLeakFix.exe" | Set-Content dist\SHA256SUMS.txt
+          [IO.File]::WriteAllText("$PWD\dist\SHA256SUMS.txt", $sums)
           Get-Content dist\SHA256SUMS.txt
 
       - name: Attest that the exe was built from this commit
